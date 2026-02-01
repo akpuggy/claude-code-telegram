@@ -36,7 +36,7 @@ async def handle_callback_query(
             "cd": handle_cd_callback,
             "action": handle_action_callback,
             "confirm": handle_confirm_callback,
-            "quick": handle_quick_action_callback,
+            "quick_action": handle_quick_action_callback,
             "followup": handle_followup_callback,
             "conversation": handle_conversation_callback,
             "git": handle_git_callback,
@@ -749,8 +749,9 @@ async def handle_quick_action_callback(
     """Handle quick action callbacks."""
     user_id = query.from_user.id
 
-    # Get quick actions manager from bot data if available
-    quick_actions = context.bot_data.get("quick_actions")
+    # Get quick actions manager from features registry
+    features = context.bot_data.get("features")
+    quick_actions = features.get_quick_actions() if features else None
 
     if not quick_actions:
         await query.edit_message_text(
@@ -793,7 +794,7 @@ async def handle_quick_action_callback(
 
         # Run the action through Claude
         claude_response = await claude_integration.run_command(
-            prompt=action.prompt, working_directory=current_dir, user_id=user_id
+            prompt=action.command, working_directory=current_dir, user_id=user_id
         )
 
         if claude_response:

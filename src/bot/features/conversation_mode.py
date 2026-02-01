@@ -86,10 +86,37 @@ class ConversationEnhancer:
 
         return self.conversation_contexts[user_id]
 
-    def update_context(self, user_id: int, response: ClaudeResponse) -> None:
-        """Update conversation context with response."""
+    def update_context(
+        self,
+        user_id: int = None,
+        response: ClaudeResponse = None,
+        session_id: str = None,
+        working_directory: str = None,
+        tools_used: List[str] = None,
+        response_content: str = None,
+    ) -> ConversationContext:
+        """Update conversation context with response.
+
+        Supports two calling conventions:
+        1. update_context(user_id, response) - original interface
+        2. update_context(session_id=..., user_id=..., ...) - keyword interface
+        """
         context = self.get_or_create_context(user_id)
-        context.update_from_response(response)
+
+        # Handle original interface (ClaudeResponse object)
+        if response is not None:
+            context.update_from_response(response)
+        else:
+            # Handle keyword interface
+            if session_id:
+                context.session_id = session_id
+            if working_directory:
+                context.project_path = working_directory
+            if tools_used:
+                context.last_tools_used = tools_used
+            if response_content:
+                context.last_response_content = response_content.lower()
+            context.conversation_turn += 1
 
         logger.debug(
             "Updated conversation context",
@@ -99,14 +126,33 @@ class ConversationEnhancer:
             tools_used=context.last_tools_used,
         )
 
+        return context
+
     def generate_follow_up_suggestions(
-        self, response: ClaudeResponse, context: ConversationContext
+        self,
+        response_or_content: ClaudeResponse = None,
+        tools_or_context: List = None,
+        context: ConversationContext = None,
     ) -> List[str]:
-        """Generate relevant follow-up suggestions."""
+        """Generate relevant follow-up suggestions.
+
+        Supports two calling conventions:
+        1. generate_follow_up_suggestions(response, context)
+        2. generate_follow_up_suggestions(content, tools_used, context)
+        """
         suggestions = []
 
-        # Based on tools used
-        tools_used = [tool.get("name", "") for tool in response.tools_used]
+        # Handle both interfaces
+        if isinstance(response_or_content, ClaudeResponse):
+            response = response_or_content
+            tools_used = [tool.get("name", "") for tool in response.tools_used]
+            content_lower = response.content.lower()
+            ctx = tools_or_context  # Second arg is context in this case
+        else:
+            # Called with (content, tools_used, context)
+            content_lower = (response_or_content or "").lower()
+            tools_used = tools_or_context or []
+            ctx = context
 
         if "Write" in tools_used or "MultiEdit" in tools_used:
             suggestions.extend(
@@ -153,9 +199,7 @@ class ConversationEnhancer:
                 ]
             )
 
-        # Based on response content analysis
-        content_lower = response.content.lower()
-
+        # Based on response content analysis (content_lower already set above)
         if "error" in content_lower or "failed" in content_lower:
             suggestions.extend(
                 [
@@ -204,15 +248,15 @@ class ConversationEnhancer:
             )
 
         # Based on conversation context
-        if context.conversation_turn > 1:
+        if ctx and ctx.conversation_turn > 1:
             suggestions.append("Continue with the next step")
 
-        if context.has_errors:
+        if ctx and ctx.has_errors:
             suggestions.extend(
                 ["Investigate the error further", "Try a different approach"]
             )
 
-        if context.todo_count > 0:
+        if ctx and ctx.todo_count > 0:
             suggestions.append("Address the TODO items")
 
         # General suggestions based on development patterns
@@ -292,18 +336,36 @@ class ConversationEnhancer:
 
         return InlineKeyboardMarkup(keyboard)
 
-    def should_show_suggestions(self, response: ClaudeResponse) -> bool:
-        """Determine if follow-up suggestions should be shown."""
-        # Don't show suggestions for errors
-        if response.is_error:
-            return False
+    def should_show_suggestions(
+        self,
+        response_or_tools: ClaudeResponse = None,
+        content: str = None,
+    ) -> bool:
+        """Determine if follow-up suggestions should be shown.
+
+        Supports two calling conventions:
+        1. should_show_suggestions(response) - ClaudeResponse object
+        2. should_show_suggestions(tools_used, content) - separate args
+        """
+        # Handle both interfaces
+        if isinstance(response_or_tools, ClaudeResponse):
+            response = response_or_tools
+            # Don't show suggestions for errors
+            if response.is_error:
+                return False
+            tools_used = response.tools_used
+            content_text = response.content
+        else:
+            # Called with (tools_used, content)
+            tools_used = response_or_tools or []
+            content_text = content or ""
 
         # Show suggestions if tools were used
-        if response.tools_used:
+        if tools_used:
             return True
 
         # Show suggestions for longer responses (likely more substantial)
-        if len(response.content) > 200:
+        if len(content_text) > 200:
             return True
 
         # Show suggestions if response contains actionable content
@@ -321,7 +383,7 @@ class ConversationEnhancer:
             "review",
         ]
 
-        content_lower = response.content.lower()
+        content_lower = content_text.lower()
         return any(keyword in content_lower for keyword in actionable_keywords)
 
     def format_response_with_suggestions(

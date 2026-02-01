@@ -37,113 +37,113 @@ class QuickActionManager:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def _create_default_actions(self) -> Dict[str, QuickAction]:
-        """Create default quick actions."""
+        """Create PAI Second Brain quick actions."""
+        # Note: Commands must be simple - the Telegram bot blocks curl, pipes, semicolons, etc.
+        # Use direct tool calls (Read, Glob) not shell commands
         return {
-            "test": QuickAction(
-                id="test",
-                name="Run Tests",
-                description="Run project tests",
-                command="test",
-                icon="🧪",
-                category="testing",
-                context_required=["has_tests"],
+            "pending_tasks": QuickAction(
+                id="pending_tasks",
+                name="Pending Tasks",
+                description="Show pending tasks from PAI memory",
+                command="IMPORTANT: Do NOT use the PAI Algorithm format. Just directly answer. Use the Glob tool to find files in /home/pai/.claude/MEMORY/WORK/ then Read the most recent META.yaml files to show my pending tasks. Be concise.",
+                icon="📋",
+                category="tasks",
+                context_required=[],
                 priority=10,
             ),
-            "install": QuickAction(
-                id="install",
-                name="Install Dependencies",
-                description="Install project dependencies",
-                command="install",
-                icon="📦",
-                category="setup",
-                context_required=["has_package_manager"],
+            "quick_note": QuickAction(
+                id="quick_note",
+                name="Quick Note",
+                description="Capture a quick note to inbox",
+                command="IMPORTANT: Do NOT use the PAI Algorithm format. Just directly answer. Ask me what I want to remember, then save it as a timestamped markdown file in /home/pai/.claude/MEMORY/INBOX/ using the Write tool.",
+                icon="💡",
+                category="capture",
+                context_required=[],
                 priority=9,
             ),
-            "format": QuickAction(
-                id="format",
-                name="Format Code",
-                description="Format code with project formatter",
-                command="format",
-                icon="🎨",
-                category="quality",
-                context_required=["has_formatter"],
-                priority=7,
-            ),
-            "lint": QuickAction(
-                id="lint",
-                name="Lint Code",
-                description="Check code quality",
-                command="lint",
-                icon="🔍",
-                category="quality",
-                context_required=["has_linter"],
+            "reminders": QuickAction(
+                id="reminders",
+                name="Reminders",
+                description="Check upcoming reminders",
+                command="IMPORTANT: Do NOT use the PAI Algorithm format. Just directly answer. Use Glob and Read tools to check /home/pai/.claude/MEMORY/ for any reminder or scheduled items. List them briefly.",
+                icon="🔔",
+                category="schedule",
+                context_required=[],
                 priority=8,
             ),
-            "security": QuickAction(
-                id="security",
-                name="Security Scan",
-                description="Run security vulnerability scan",
-                command="security",
-                icon="🔒",
-                category="security",
-                context_required=["has_dependencies"],
+            "recent_learnings": QuickAction(
+                id="recent_learnings",
+                name="Recent Learnings",
+                description="Review recent learnings captured by PAI",
+                command="IMPORTANT: Do NOT use the PAI Algorithm format. Just directly answer. Use Glob to find recent files in /home/pai/.claude/MEMORY/LEARNING/ and Read the 3 most recent ones. Summarize briefly.",
+                icon="📚",
+                category="review",
+                context_required=[],
+                priority=7,
+            ),
+            "search_memory": QuickAction(
+                id="search_memory",
+                name="Search Memory",
+                description="Search PAI knowledge base",
+                command="IMPORTANT: Do NOT use the PAI Algorithm format. Just directly answer. Ask me what to search for, then use Grep to search /home/pai/.claude/MEMORY/ for matching content.",
+                icon="🔍",
+                category="recall",
+                context_required=[],
                 priority=6,
             ),
-            "optimize": QuickAction(
-                id="optimize",
-                name="Optimize",
-                description="Optimize code performance",
-                command="optimize",
-                icon="⚡",
-                category="performance",
-                context_required=["has_code"],
+            "work_summary": QuickAction(
+                id="work_summary",
+                name="Work Summary",
+                description="Summarize current active work",
+                command="IMPORTANT: Do NOT use the PAI Algorithm format. Just directly answer. Use Glob to find the most recent directory in /home/pai/.claude/MEMORY/WORK/ and Read its META.yaml and THREAD.md to summarize current work.",
+                icon="📊",
+                category="context",
+                context_required=[],
                 priority=5,
             ),
-            "document": QuickAction(
-                id="document",
-                name="Generate Docs",
-                description="Generate documentation",
-                command="document",
-                icon="📝",
-                category="documentation",
-                context_required=["has_code"],
+            "active_goals": QuickAction(
+                id="active_goals",
+                name="Active Goals",
+                description="Show active goals from TELOS",
+                command="IMPORTANT: Do NOT use the PAI Algorithm format. Just directly answer. Use Read tool to read /home/pai/.claude/skills/PAI/USER/TELOS/PROJECTS.md and summarize my active goals briefly.",
+                icon="🎯",
+                category="goals",
+                context_required=[],
                 priority=4,
             ),
-            "refactor": QuickAction(
-                id="refactor",
-                name="Refactor",
-                description="Suggest code improvements",
-                command="refactor",
-                icon="🔧",
-                category="quality",
-                context_required=["has_code"],
+            "continue_last": QuickAction(
+                id="continue_last",
+                name="Continue Last",
+                description="Resume last Claude session",
+                command="IMPORTANT: Do NOT use the PAI Algorithm format. Just directly answer. Use Glob to find the most recent session in /home/pai/.claude/MEMORY/WORK/, Read its context, and ask how I want to continue.",
+                icon="💬",
+                category="flow",
+                context_required=[],
                 priority=3,
             ),
         }
 
     async def get_suggestions(
-        self, session: SessionModel, limit: int = 6
+        self,
+        session: Optional[SessionModel] = None,
+        limit: int = 8,
+        session_data: Optional[Dict[str, Any]] = None,
     ) -> List[QuickAction]:
-        """Get quick action suggestions based on session context.
+        """Get quick action suggestions.
+
+        PAI Second Brain actions are always available (no context filtering).
 
         Args:
-            session: Current session
+            session: Current session (optional, for backwards compatibility)
             limit: Maximum number of suggestions
+            session_data: Dict with working_directory and user_id (alternative interface)
 
         Returns:
             List of suggested actions
         """
         try:
-            # Analyze context
-            context = await self._analyze_context(session)
-
-            # Filter actions based on context
-            available_actions = []
-            for action in self.actions.values():
-                if self._is_action_available(action, context):
-                    available_actions.append(action)
-
-            # Sort by priority and return top N
+            # PAI actions have no context requirements - return all sorted by priority
+            available_actions = list(self.actions.values())
             available_actions.sort(key=lambda x: x.priority, reverse=True)
             return available_actions[:limit]
 
@@ -151,84 +151,21 @@ class QuickActionManager:
             self.logger.error(f"Error getting suggestions: {e}")
             return []
 
-    async def _analyze_context(self, session: SessionModel) -> Dict[str, Any]:
-        """Analyze session context to determine available actions.
-
-        Args:
-            session: Current session
-
-        Returns:
-            Context dictionary
-        """
-        context = {
-            "has_code": True,  # Default assumption
-            "has_tests": False,
-            "has_package_manager": False,
-            "has_formatter": False,
-            "has_linter": False,
-            "has_dependencies": False,
-        }
-
-        # Analyze recent messages for context clues
-        if session.context:
-            recent_messages = session.context.get("recent_messages", [])
-            for msg in recent_messages:
-                content = msg.get("content", "").lower()
-
-                # Check for test indicators
-                if any(word in content for word in ["test", "pytest", "unittest"]):
-                    context["has_tests"] = True
-
-                # Check for package manager indicators
-                if any(word in content for word in ["pip", "poetry", "npm", "yarn"]):
-                    context["has_package_manager"] = True
-                    context["has_dependencies"] = True
-
-                # Check for formatter indicators
-                if any(word in content for word in ["black", "prettier", "format"]):
-                    context["has_formatter"] = True
-
-                # Check for linter indicators
-                if any(
-                    word in content for word in ["flake8", "pylint", "eslint", "mypy"]
-                ):
-                    context["has_linter"] = True
-
-        # File-based context analysis could be added here
-        # For now, we'll use heuristics based on session history
-
-        return context
-
-    def _is_action_available(
-        self, action: QuickAction, context: Dict[str, Any]
-    ) -> bool:
-        """Check if an action is available in the given context.
-
-        Args:
-            action: The action to check
-            context: Current context
-
-        Returns:
-            True if action is available
-        """
-        # Check all required context keys
-        for key in action.context_required:
-            if not context.get(key, False):
-                return False
-        return True
-
     def create_inline_keyboard(
-        self, actions: List[QuickAction], columns: int = 2
+        self, actions: List[QuickAction], columns: int = 2, max_columns: int = None
     ) -> InlineKeyboardMarkup:
         """Create inline keyboard for quick actions.
 
         Args:
             actions: List of actions to display
             columns: Number of columns in keyboard
+            max_columns: Alias for columns (for backwards compatibility)
 
         Returns:
             Inline keyboard markup
         """
+        # Support both parameter names
+        cols = max_columns if max_columns is not None else columns
         keyboard = []
         row = []
 
@@ -240,7 +177,7 @@ class QuickActionManager:
             row.append(button)
 
             # Add row when full or last item
-            if len(row) >= columns or i == len(actions) - 1:
+            if len(row) >= cols or i == len(actions) - 1:
                 keyboard.append(row)
                 row = []
 
