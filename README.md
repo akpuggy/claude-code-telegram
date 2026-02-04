@@ -55,6 +55,7 @@ This project is actively being developed. Here's the current status of features:
 - SQLite database persistence with migrations
 - Comprehensive usage and cost tracking
 - Session management with persistence
+- **✨ User session persistence across bot restarts** (PicklePersistence)
 - Audit logging and security event tracking
 
 #### 🚀 **New Advanced Features**

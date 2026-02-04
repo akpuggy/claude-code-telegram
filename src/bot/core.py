@@ -18,6 +18,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    PicklePersistence,
     filters,
 )
 
@@ -45,6 +46,14 @@ class ClaudeCodeBot:
 
         # Create application
         builder = Application.builder()
+
+        # Add persistence for user_data across restarts
+        persistence = PicklePersistence(
+            filepath="data/telegram_persistence.pickle",
+            update_interval=60,  # Save every 60 seconds
+        )
+        builder.persistence(persistence)
+
         builder.token(self.settings.telegram_token_str)
 
         # Configure connection settings
