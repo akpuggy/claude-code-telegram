@@ -91,7 +91,10 @@ def estimate_message_cost(event: Any) -> float:
     - Expected Claude usage
     """
     message = event.effective_message
-    message_text = message.text if message else ""
+    # Handle photos (which have caption, not text) and other message types
+    message_text = ""
+    if message:
+        message_text = message.text or message.caption or ""
 
     # Base cost for any message
     base_cost = 0.01

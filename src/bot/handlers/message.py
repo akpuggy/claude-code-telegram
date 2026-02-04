@@ -226,12 +226,38 @@ async def handle_text_message(
                     logger.warning("Failed to log interaction to storage", error=str(e))
 
             # Format response
-            from ..utils.formatting import ResponseFormatter
+            from ..utils.formatting import (
+                ResponseFormatter,
+                parse_suggestions,
+                create_suggestion_keyboard,
+            )
 
             formatter = ResponseFormatter(settings)
-            formatted_messages = formatter.format_claude_response(
-                claude_response.content
-            )
+
+            # Parse AI suggestions from response
+            cleaned_content, suggestions = parse_suggestions(claude_response.content)
+
+            # Store suggestions in user_data for callback handling
+            if suggestions:
+                context.user_data["last_suggestions"] = suggestions
+                logger.info(
+                    "Parsed AI suggestions from response",
+                    user_id=user_id,
+                    suggestion_count=len(suggestions),
+                )
+
+            formatted_messages = formatter.format_claude_response(cleaned_content)
+
+            # Add suggestion keyboard to the last message if we have suggestions
+            if suggestions and formatted_messages:
+                suggestion_keyboard = create_suggestion_keyboard(suggestions)
+                # Replace or set the reply_markup on the last message
+                last_msg = formatted_messages[-1]
+                formatted_messages[-1] = type(last_msg)(
+                    text=last_msg.text,
+                    parse_mode=last_msg.parse_mode,
+                    reply_markup=suggestion_keyboard,
+                )
 
         except ClaudeToolValidationError as e:
             # Tool validation error with detailed instructions
@@ -313,6 +339,9 @@ async def handle_text_message(
                     )
 
                     if suggestions:
+                        # Store suggestions in user_data so callback handler can retrieve them
+                        context.user_data["last_suggestions"] = suggestions[:4]
+
                         # Create keyboard with suggestions
                         suggestion_keyboard = (
                             conversation_enhancer.create_follow_up_keyboard(suggestions)
@@ -532,12 +561,32 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
 
             # Format and send response
-            from ..utils.formatting import ResponseFormatter
+            from ..utils.formatting import (
+                ResponseFormatter,
+                parse_suggestions,
+                create_suggestion_keyboard,
+            )
 
             formatter = ResponseFormatter(settings)
-            formatted_messages = formatter.format_claude_response(
-                claude_response.content
-            )
+
+            # Parse AI suggestions from response
+            cleaned_content, suggestions = parse_suggestions(claude_response.content)
+
+            # Store suggestions in user_data for callback handling
+            if suggestions:
+                context.user_data["last_suggestions"] = suggestions
+
+            formatted_messages = formatter.format_claude_response(cleaned_content)
+
+            # Add suggestion keyboard to the last message if we have suggestions
+            if suggestions and formatted_messages:
+                suggestion_keyboard = create_suggestion_keyboard(suggestions)
+                last_msg = formatted_messages[-1]
+                formatted_messages[-1] = type(last_msg)(
+                    text=last_msg.text,
+                    parse_mode=last_msg.parse_mode,
+                    reply_markup=suggestion_keyboard,
+                )
 
             # Delete progress message
             await claude_progress_msg.delete()
@@ -602,6 +651,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     image_handler = features.get_image_handler() if features else None
 
     if image_handler:
+        progress_msg = None
+        claude_progress_msg = None
+        processed_image = None
+
         try:
             # Send processing indicator
             progress_msg = await update.message.reply_text(
@@ -616,8 +669,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 photo, update.message.caption
             )
 
-            # Delete progress message
-            await progress_msg.delete()
+            # Delete progress message safely
+            try:
+                if progress_msg:
+                    await progress_msg.delete()
+                    progress_msg = None  # Mark as deleted
+            except Exception:
+                pass  # Message may already be deleted
 
             # Create Claude progress message
             claude_progress_msg = await update.message.reply_text(
@@ -628,11 +686,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             claude_integration = context.bot_data.get("claude_integration")
 
             if not claude_integration:
-                await claude_progress_msg.edit_text(
-                    "❌ **Claude integration not available**\n\n"
-                    "The Claude Code integration is not properly configured.",
-                    parse_mode="Markdown",
-                )
+                try:
+                    if claude_progress_msg:
+                        await claude_progress_msg.edit_text(
+                            "❌ **Claude integration not available**\n\n"
+                            "The Claude Code integration is not properly configured.",
+                            parse_mode="Markdown",
+                        )
+                except Exception:
+                    pass
                 return
 
             # Get current directory and session
@@ -661,8 +723,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     claude_response.content
                 )
 
-                # Delete progress message
-                await claude_progress_msg.delete()
+                # Delete progress message safely
+                try:
+                    if claude_progress_msg:
+                        await claude_progress_msg.delete()
+                        claude_progress_msg = None
+                except Exception:
+                    pass  # Message may already be deleted
 
                 # Send responses
                 for i, message in enumerate(formatted_messages):
@@ -679,18 +746,43 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                         await asyncio.sleep(0.5)
 
             except Exception as e:
-                await claude_progress_msg.edit_text(
-                    _format_error_message(str(e)), parse_mode="Markdown"
-                )
+                try:
+                    if claude_progress_msg:
+                        await claude_progress_msg.edit_text(
+                            _format_error_message(str(e)), parse_mode="Markdown"
+                        )
+                        claude_progress_msg = None
+                except Exception:
+                    # Message may already be deleted, send new error message
+                    await update.message.reply_text(
+                        _format_error_message(str(e)), parse_mode="Markdown"
+                    )
                 logger.error(
                     "Claude image processing failed", error=str(e), user_id=user_id
                 )
 
         except Exception as e:
             logger.error("Image processing failed", error=str(e), user_id=user_id)
+            # Clean up any remaining progress messages
+            try:
+                if progress_msg:
+                    await progress_msg.delete()
+            except Exception:
+                pass
+            try:
+                if claude_progress_msg:
+                    await claude_progress_msg.delete()
+            except Exception:
+                pass
             await update.message.reply_text(
                 f"❌ **Error processing image**\n\n{str(e)}", parse_mode="Markdown"
             )
+
+        finally:
+            # Cleanup temp image file after processing
+            if processed_image and processed_image.file_path:
+                from ..features.image_handler import ImageHandler
+                ImageHandler.cleanup_temp_file(processed_image.file_path)
     else:
         # Fall back to unsupported message
         await update.message.reply_text(
