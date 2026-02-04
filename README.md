@@ -48,10 +48,10 @@ This project is actively being developed. Here's the current status of features:
 - Complete Claude integration with SDK/CLI support
 - **✨ Enhanced file upload handling with archive extraction**
 - **✨ Git integration with safe repository operations**
-- **✨ Quick actions system with context-aware buttons**
+- **✨ AI-generated suggestion buttons** (replaces static quick actions)
 - **✨ Session export in Markdown, HTML, and JSON formats**
 - **✨ Image/screenshot upload with smart analysis prompts**
-- **✨ Conversation enhancements with follow-up suggestions**
+- **✨ Clickable suggestions that execute as new prompts**
 - SQLite database persistence with migrations
 - Comprehensive usage and cost tracking
 - Session management with persistence
@@ -60,15 +60,15 @@ This project is actively being developed. Here's the current status of features:
 #### 🚀 **New Advanced Features**
 - **📦 Archive Analysis**: Upload ZIP/TAR files for comprehensive project analysis
 - **🔄 Git Operations**: View status, diffs, logs, and commit history
-- **⚡ Quick Actions**: Context-aware buttons for tests, linting, formatting, etc.
+- **💡 AI Suggestions**: Claude generates contextual next-step buttons from responses
 - **📤 Session Export**: Download conversation history in multiple formats
 - **🖼️ Image Support**: Upload screenshots and diagrams for analysis
-- **💡 Smart Suggestions**: AI-powered follow-up action recommendations
+- **🔘 Clickable Actions**: Suggestion buttons execute as new prompts when clicked
 
 #### 🔄 **Planned Enhancements**
 - True streaming responses with real-time updates
 - Claude vision API integration for full image analysis
-- Custom quick actions configuration
+- Suggestion persistence across sessions
 - Advanced Git operations (when security permits)
 - Plugin system for third-party extensions
 - Multi-language code execution
@@ -96,11 +96,11 @@ This project is actively being developed. Here's the current status of features:
 - **Input Validation**: Protection against injection attacks, path traversal, and zip bombs
 
 ### ⚡ Developer Experience
-- **Quick Actions**: Context-aware buttons for tests, linting, formatting, and more
+- **AI Suggestions**: Claude generates clickable next-step buttons based on response content
 - **Session Management**: Start, continue, end, export, and monitor Claude sessions
 - **Usage Analytics**: Detailed cost tracking, usage patterns, and system statistics
 - **Responsive Design**: Clean, mobile-friendly interface with inline keyboards
-- **Smart Follow-ups**: AI-powered suggestions for next actions based on context
+- **One-Click Actions**: Suggestion buttons execute as new prompts when clicked
 
 ## 🛠️ Installation
 
@@ -331,16 +331,45 @@ Bot: ✅ Session exported!
      [Downloads as file in Telegram]
 ```
 
-### Quick Actions
+### AI-Generated Suggestions
 
-The bot provides helpful buttons for common tasks:
+The bot supports **AI-generated suggestion buttons** that appear after Claude's responses. When Claude outputs suggestions in a special format, they're rendered as clickable buttons.
 
-- 🧪 **Test** - Run your test suite
-- 📦 **Install** - Install dependencies 
-- 🎨 **Format** - Format your code
-- 🔍 **Find TODOs** - Locate TODO comments
-- 🔨 **Build** - Build your project
-- 📊 **Git Status** - Check git status
+**How it works:**
+1. Claude responds with helpful next steps in `[SUGGESTIONS]...[/SUGGESTIONS]` format
+2. The bot parses these and displays them as inline keyboard buttons
+3. Clicking a button sends that suggestion as your next message to Claude
+
+**Example Claude output:**
+```
+I've fixed the authentication bug in src/auth.py.
+
+[SUGGESTIONS]
+1. Run the tests to verify the fix
+2. Review the changes I made
+3. Deploy to staging
+[/SUGGESTIONS]
+```
+
+**What you see:**
+```
+I've fixed the authentication bug in src/auth.py.
+
+[💡 Run the tests to verify...]
+[💡 Review the changes I ma...]
+[💡 Deploy to staging]
+```
+
+**To enable suggestions:** Add this instruction to your Claude system prompt:
+```
+When responding via Telegram, if helpful next steps exist, append:
+[SUGGESTIONS]
+1. First suggestion
+2. Second suggestion
+3. Third suggestion (optional)
+[/SUGGESTIONS]
+Only include when genuinely useful. Max 3 suggestions.
+```
 
 ## ⚙️ Configuration
 
@@ -443,11 +472,27 @@ To get your Telegram user ID for the `ALLOWED_USERS` setting:
 This bot implements enterprise-grade security:
 
 - **🔐 Access Control**: Whitelist-based user authentication
-- **📁 Directory Isolation**: Strict sandboxing to approved directories  
+- **📁 Directory Isolation**: Strict sandboxing to approved directories
 - **⏱️ Rate Limiting**: Request and cost-based limits prevent abuse
 - **🛡️ Input Validation**: Protection against injection attacks
 - **📊 Audit Logging**: Complete tracking of all user actions
 - **🔒 Secure Defaults**: Principle of least privilege throughout
+
+### PAI Security Integration
+
+When running within the **PAI (Personal AI Infrastructure)** system, this bot operates with a **two-layer security architecture**:
+
+| Layer | Location | Purpose |
+|-------|----------|---------|
+| **PAI Security Hook** | `~/.claude/hooks/SecurityValidator.hook.ts` | Nuanced pattern detection (e.g., allows `curl \| jq` but blocks `curl \| sh`) |
+| **Bot Monitor** | `src/claude/monitor.py` | Catastrophic operation blocking (e.g., `rm -rf /`, disk formatting) |
+
+**Coordination principle:** PAI handles nuanced, context-aware security patterns. The bot monitor only blocks operations that are NEVER safe, regardless of context.
+
+**When modifying security:**
+- Check both `~/.claude/skills/PAI/USER/PAISECURITYSYSTEM/patterns.yaml` (PAI) and `src/claude/monitor.py` (bot)
+- Avoid duplicating patterns — this causes false positives
+- Test with real Telegram commands after changes
 
 For security issues, see [SECURITY.md](SECURITY.md).
 

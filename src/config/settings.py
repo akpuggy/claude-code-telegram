@@ -74,21 +74,33 @@ class Settings(BaseSettings):
     use_sdk: bool = Field(True, description="Use Python SDK instead of CLI subprocess")
     claude_allowed_tools: Optional[List[str]] = Field(
         default=[
+            # File operations
             "Read",
             "Write",
             "Edit",
+            "MultiEdit",
+            # Search
             "Bash",
             "Glob",
             "Grep",
             "LS",
+            # Task/Todo management
             "Task",
-            "MultiEdit",
-            "NotebookRead",
-            "NotebookEdit",
-            "WebFetch",
+            "TaskCreate",
+            "TaskUpdate",
+            "TaskList",
+            "TaskGet",
             "TodoRead",
             "TodoWrite",
+            # Notebooks
+            "NotebookRead",
+            "NotebookEdit",
+            # Web
+            "WebFetch",
             "WebSearch",
+            # Skills and interaction
+            "Skill",
+            "AskUserQuestion",
         ],
         description="List of allowed Claude tools",
     )

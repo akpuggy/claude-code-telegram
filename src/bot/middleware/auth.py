@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Any, Callable, Dict
+from zoneinfo import ZoneInfo
 
 import structlog
 
@@ -86,7 +87,7 @@ async def auth_middleware(handler: Callable, event: Any, data: Dict[str, Any]) -
         if event.effective_message:
             await event.effective_message.reply_text(
                 f"🔓 Welcome! You are now authenticated.\n"
-                f"Session started at {datetime.utcnow().strftime('%H:%M:%S UTC')}"
+                f"Session started at {datetime.now(ZoneInfo('America/New_York')).strftime('%H:%M:%S %Z')}"
             )
 
         # Continue to handler

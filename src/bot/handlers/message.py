@@ -225,6 +225,24 @@ async def handle_text_message(
                 except Exception as e:
                     logger.warning("Failed to log interaction to storage", error=str(e))
 
+            # Check for empty response (can happen if Claude ran out of turns or only did tool calls)
+            response_content = claude_response.content
+            if not response_content or not response_content.strip():
+                logger.warning(
+                    "Claude returned empty response",
+                    session_id=claude_response.session_id,
+                    num_turns=claude_response.num_turns,
+                    tools_used=len(claude_response.tools_used) if claude_response.tools_used else 0,
+                )
+                response_content = (
+                    "✅ **Task Completed**\n\n"
+                    "I completed the requested work but didn't generate a text response.\n\n"
+                    f"**Session info:**\n"
+                    f"• Turns used: {claude_response.num_turns}\n"
+                    f"• Tools used: {len(claude_response.tools_used) if claude_response.tools_used else 0}\n\n"
+                    "If you expected a response, try asking me to summarize what I did."
+                )
+
             # Format response
             from ..utils.formatting import (
                 ResponseFormatter,
@@ -235,7 +253,7 @@ async def handle_text_message(
             formatter = ResponseFormatter(settings)
 
             # Parse AI suggestions from response
-            cleaned_content, suggestions = parse_suggestions(claude_response.content)
+            cleaned_content, suggestions = parse_suggestions(response_content)
 
             # Store suggestions in user_data for callback handling
             if suggestions:

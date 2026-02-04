@@ -311,13 +311,12 @@ class ConversationEnhancer:
         keyboard = []
 
         # Add suggestion buttons (max 4, in rows of 1 for better mobile experience)
-        for suggestion in suggestions[:4]:
-            # Create a shorter hash for callback data
-            suggestion_hash = str(hash(suggestion) % 1000000)
+        # Use index-based callback_data so handler can retrieve from stored list
+        for i, suggestion in enumerate(suggestions[:4]):
             keyboard.append(
                 [
                     InlineKeyboardButton(
-                        f"💡 {suggestion}", callback_data=f"followup:{suggestion_hash}"
+                        f"💡 {suggestion}", callback_data=f"followup:{i}"
                     )
                 ]
             )

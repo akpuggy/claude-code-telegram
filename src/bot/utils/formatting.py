@@ -2,11 +2,65 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ...config.settings import Settings
+
+
+def parse_suggestions(text: str) -> Tuple[str, List[str]]:
+    """Extract suggestions from Claude response.
+
+    Parses [SUGGESTIONS]...[/SUGGESTIONS] blocks from Claude's output.
+
+    Returns: (cleaned_text, list_of_suggestions)
+    """
+    pattern = r'\[SUGGESTIONS\](.*?)\[/SUGGESTIONS\]'
+    match = re.search(pattern, text, re.DOTALL)
+
+    if not match:
+        return text, []
+
+    # Extract suggestions (numbered list)
+    suggestions_block = match.group(1).strip()
+    suggestions = []
+    for line in suggestions_block.split('\n'):
+        line = line.strip()
+        # Remove numbering: "1. Text" -> "Text"
+        if line and line[0].isdigit():
+            line = re.sub(r'^\d+\.\s*', '', line)
+        if line:
+            suggestions.append(line)
+
+    # Remove suggestions block from text
+    cleaned = text[:match.start()] + text[match.end():]
+    return cleaned.strip(), suggestions[:3]  # Max 3 suggestions
+
+
+def create_suggestion_keyboard(suggestions: List[str]) -> Optional[InlineKeyboardMarkup]:
+    """Create inline keyboard from AI suggestions.
+
+    Args:
+        suggestions: List of suggestion strings to display as buttons
+
+    Returns:
+        InlineKeyboardMarkup with suggestion buttons, or None if no suggestions
+    """
+    if not suggestions:
+        return None
+
+    buttons = []
+    for i, suggestion in enumerate(suggestions):
+        # Truncate display text for button (Telegram limit ~64 bytes for callback_data)
+        display = suggestion[:30] + "..." if len(suggestion) > 30 else suggestion
+        buttons.append([
+            InlineKeyboardButton(
+                f"💡 {display}",
+                callback_data=f"suggest:{i}"
+            )
+        ])
+    return InlineKeyboardMarkup(buttons)
 
 
 @dataclass
@@ -561,22 +615,17 @@ class ResponseFormatter:
 
         return messages
 
-    def _get_quick_actions_keyboard(self) -> InlineKeyboardMarkup:
-        """Get quick actions inline keyboard."""
-        keyboard = [
-            [
-                InlineKeyboardButton("🧪 Test", callback_data="quick:test"),
-                InlineKeyboardButton("📦 Install", callback_data="quick:install"),
-                InlineKeyboardButton("🎨 Format", callback_data="quick:format"),
-            ],
-            [
-                InlineKeyboardButton("🔍 Find TODOs", callback_data="quick:find_todos"),
-                InlineKeyboardButton("🔨 Build", callback_data="quick:build"),
-                InlineKeyboardButton("📊 Git Status", callback_data="quick:git_status"),
-            ],
-        ]
+    def _get_quick_actions_keyboard(self) -> Optional[InlineKeyboardMarkup]:
+        """Quick actions are now AI-generated via [SUGGESTIONS] blocks.
 
-        return InlineKeyboardMarkup(keyboard)
+        This method returns None as the static quick action buttons have been
+        replaced by AI-generated suggestion buttons that appear when Claude
+        outputs a [SUGGESTIONS]...[/SUGGESTIONS] block.
+
+        Returns:
+            None - suggestions are handled dynamically via parse_suggestions()
+        """
+        return None
 
     def create_confirmation_keyboard(
         self, confirm_data: str, cancel_data: str = "confirm:no"

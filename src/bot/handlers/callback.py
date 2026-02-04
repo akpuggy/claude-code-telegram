@@ -37,6 +37,8 @@ async def handle_callback_query(
             "action": handle_action_callback,
             "confirm": handle_confirm_callback,
             "quick_action": handle_quick_action_callback,
+            "quick": handle_quick_action_callback,  # Alias for quick: prefix
+            "suggest": handle_suggestion_callback,
             "followup": handle_followup_callback,
             "conversation": handle_conversation_callback,
             "git": handle_git_callback,
@@ -824,49 +826,157 @@ async def handle_quick_action_callback(
 async def handle_followup_callback(
     query, suggestion_hash: str, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Handle follow-up suggestion callbacks."""
+    """Handle follow-up suggestion callbacks.
+
+    Note: This handler is deprecated in favor of handle_suggestion_callback.
+    Kept for backwards compatibility with existing buttons.
+    """
     user_id = query.from_user.id
 
-    # Get conversation enhancer from bot data if available
-    conversation_enhancer = context.bot_data.get("conversation_enhancer")
+    # Redirect to suggestion handler if we have stored suggestions
+    suggestions = context.user_data.get("last_suggestions", [])
+    if suggestions:
+        # Try to find suggestion by hash (if hash is an index)
+        try:
+            index = int(suggestion_hash)
+            if index < len(suggestions):
+                await handle_suggestion_callback(query, str(index), context)
+                return
+        except ValueError:
+            pass
 
-    if not conversation_enhancer:
-        await query.edit_message_text(
-            "❌ **Follow-up Not Available**\n\n"
-            "Conversation enhancement features are not available."
-        )
-        return
+    # Fallback message
+    await query.edit_message_text(
+        "💡 **Follow-up Suggestion**\n\n"
+        "This suggestion is no longer available. Please send a new message "
+        "to continue your conversation with Claude.\n\n"
+        "_Tip: Click the suggestion buttons immediately after receiving a response._"
+    )
+
+    logger.info(
+        "Follow-up suggestion selected (deprecated)",
+        user_id=user_id,
+        suggestion_hash=suggestion_hash,
+    )
+
+
+async def handle_suggestion_callback(
+    query, suggestion_index: str, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle AI suggestion button clicks.
+
+    Sends the suggestion text as a new message to Claude.
+    """
+    user_id = query.from_user.id
 
     try:
-        # Get stored suggestions (this would need to be implemented in the enhancer)
-        # For now, we'll provide a generic response
-        await query.edit_message_text(
-            "💡 **Follow-up Suggestion Selected**\n\n"
-            "This follow-up suggestion will be implemented once the conversation "
-            "enhancement system is fully integrated with the message handler.\n\n"
-            "**Current Status:**\n"
-            "• Suggestion received ✅\n"
-            "• Integration pending 🔄\n\n"
-            "_You can continue the conversation by sending a new message._"
+        # Get stored suggestions from user_data
+        suggestions = context.user_data.get("last_suggestions", [])
+        index = int(suggestion_index)
+
+        if index >= len(suggestions):
+            await query.answer("Suggestion no longer available", show_alert=True)
+            return
+
+        suggestion_text = suggestions[index]
+
+        # Acknowledge the click
+        await query.answer(f"Sending: {suggestion_text[:40]}...")
+
+        # Get message handler components
+        claude_integration = context.bot_data.get("claude_integration")
+        settings: Settings = context.bot_data["settings"]
+        current_dir = context.user_data.get(
+            "current_directory", settings.approved_directory
         )
 
-        logger.info(
-            "Follow-up suggestion selected",
-            user_id=user_id,
-            suggestion_hash=suggestion_hash,
+        if not claude_integration:
+            await query.message.reply_text(
+                "❌ **Claude Integration Not Available**\n\n"
+                "Claude integration is not properly configured."
+            )
+            return
+
+        # Send "typing" indicator
+        await context.bot.send_chat_action(chat_id=query.message.chat_id, action="typing")
+
+        # Show processing message
+        progress_msg = await query.message.reply_text(
+            f"🤔 Processing: _{suggestion_text[:60]}{'...' if len(suggestion_text) > 60 else ''}_",
+            parse_mode="Markdown",
         )
+
+        # Get existing session ID
+        session_id = context.user_data.get("claude_session_id")
+
+        # Execute the suggestion as a new prompt
+        response = await claude_integration.run_command(
+            prompt=suggestion_text,
+            working_directory=current_dir,
+            user_id=user_id,
+            session_id=session_id,
+        )
+
+        # Delete progress message
+        await progress_msg.delete()
+
+        if response and response.content:
+            # Update session ID
+            context.user_data["claude_session_id"] = response.session_id
+
+            # Format and send response (reuse existing formatting)
+            from ..utils.formatting import ResponseFormatter, parse_suggestions, create_suggestion_keyboard
+
+            formatter = ResponseFormatter(settings)
+
+            # Parse suggestions from response
+            cleaned_content, new_suggestions = parse_suggestions(response.content)
+
+            # Store new suggestions for next callback
+            if new_suggestions:
+                context.user_data["last_suggestions"] = new_suggestions
+
+            # Format the cleaned response
+            formatted_messages = formatter.format_claude_response(cleaned_content)
+
+            # Send formatted responses
+            for i, msg in enumerate(formatted_messages):
+                # Add suggestion keyboard to the last message if we have suggestions
+                reply_markup = msg.reply_markup
+                if i == len(formatted_messages) - 1 and new_suggestions:
+                    reply_markup = create_suggestion_keyboard(new_suggestions)
+
+                await query.message.reply_text(
+                    msg.text,
+                    parse_mode=msg.parse_mode,
+                    reply_markup=reply_markup,
+                )
+
+            logger.info(
+                "Suggestion executed successfully",
+                user_id=user_id,
+                suggestion_index=index,
+                suggestion_preview=suggestion_text[:50],
+            )
+        else:
+            await query.message.reply_text(
+                "❌ **No Response**\n\n"
+                "Claude did not return a response. Please try again."
+            )
+
+    except ValueError:
+        logger.error("Invalid suggestion index", user_id=user_id, index=suggestion_index)
+        await query.answer("Invalid suggestion", show_alert=True)
 
     except Exception as e:
         logger.error(
-            "Error handling follow-up callback",
+            "Suggestion callback error",
             error=str(e),
             user_id=user_id,
-            suggestion_hash=suggestion_hash,
+            suggestion_index=suggestion_index,
         )
-
-        await query.edit_message_text(
-            "❌ **Error Processing Follow-up**\n\n"
-            "An error occurred while processing your follow-up suggestion."
+        await query.message.reply_text(
+            f"❌ **Error Processing Suggestion**\n\n{str(e)}"
         )
 
 

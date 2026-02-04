@@ -4,6 +4,31 @@ Features:
 - Track tool calls
 - Security validation
 - Usage analytics
+
+SECURITY ARCHITECTURE NOTE (2026-02-02):
+========================================
+This bot operates within the PAI (Personal AI Infrastructure) system, which has
+its own security layer at ~/.claude/hooks/SecurityValidator.hook.ts
+
+The two security layers are COORDINATED, not duplicated:
+
+1. PAI Security Hook (upstream):
+   - Runs BEFORE commands reach this bot
+   - Handles nuanced patterns like "curl | sh" (pipe to shell)
+   - Allows legitimate "curl | jq" commands
+   - Location: ~/.claude/skills/PAI/USER/PAISECURITYSYSTEM/patterns.yaml
+
+2. This Monitor (downstream):
+   - Only blocks truly CATASTROPHIC operations
+   - Examples: "rm -rf /", "dd if=/dev/zero", "mkfs"
+   - Does NOT duplicate curl/pipe/redirect blocking (PAI handles it)
+
+WHEN MODIFYING SECURITY:
+- If changing patterns here, check PAI patterns.yaml doesn't conflict
+- If adding new PAI patterns, ensure this monitor doesn't over-block
+- The goal: defense in depth WITHOUT false positives
+
+See also: ~/.claude/skills/PAI/USER/WORK/telegram-button-systems.md
 """
 
 from collections import defaultdict
@@ -114,21 +139,16 @@ class ToolMonitor:
             command = tool_input.get("command", "")
 
             # Check for dangerous commands
+            # NOTE: Legitimate commands (curl, pipes, redirects) are allowed here
+            # because PAI's security hook handles dangerous pipe-to-shell patterns.
+            # Only block truly catastrophic/irreversible operations.
             dangerous_patterns = [
-                "rm -rf",
-                "sudo",
-                "chmod 777",
-                "curl",
-                "wget",
-                "nc ",
-                "netcat",
-                ">",
-                ">>",
-                "|",
-                "&",
-                ";",
-                "$(",
-                "`",
+                "rm -rf /",
+                "rm -rf ~",
+                "chmod 777 /",
+                "dd if=/dev/zero",
+                "mkfs",
+                "> /dev/sd",
             ]
 
             for pattern in dangerous_patterns:
