@@ -715,13 +715,29 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 # Update session ID
                 context.user_data["claude_session_id"] = claude_response.session_id
 
+                # Check for empty response (can happen if Claude ran out of turns)
+                response_content = claude_response.content
+                if not response_content or not response_content.strip():
+                    logger.warning(
+                        "Claude returned empty response for image",
+                        session_id=claude_response.session_id,
+                        num_turns=claude_response.num_turns,
+                    )
+                    response_content = (
+                        "📷 **Image Analyzed**\n\n"
+                        "I've read the image but ran out of processing turns before "
+                        "completing my analysis. This can happen with complex images.\n\n"
+                        "**Try:**\n"
+                        "• Sending the image again with a specific question\n"
+                        "• Using a shorter, more focused prompt\n"
+                        f"• Session processed {claude_response.num_turns} turns"
+                    )
+
                 # Format and send response
                 from ..utils.formatting import ResponseFormatter
 
                 formatter = ResponseFormatter(settings)
-                formatted_messages = formatter.format_claude_response(
-                    claude_response.content
-                )
+                formatted_messages = formatter.format_claude_response(response_content)
 
                 # Delete progress message safely
                 try:

@@ -146,70 +146,65 @@ class ImageHandler:
 
     def _create_screenshot_prompt(self, caption: Optional[str], file_path: Path) -> str:
         """Create prompt for screenshot analysis"""
-        base_prompt = f"""I'm sharing a screenshot with you. The image is saved at: {file_path}
+        base_prompt = f"""Screenshot shared at: {file_path}
 
-IMPORTANT: Use the Read tool to view the image file before analyzing.
-
-Please analyze the screenshot and help me with:
-1. Identifying what application or website this is from
-2. Understanding the UI elements and their purpose
-3. Any issues or improvements you notice
-4. Answering any specific questions I have
+Read the image file, then respond directly with your analysis.
+Do NOT explore other files - just analyze what you see in the image.
+Keep your response concise and focused.
 
 """
         if caption:
-            base_prompt += f"Specific request: {caption}"
+            base_prompt += f"User's question: {caption}"
+        else:
+            base_prompt += "Describe what you see and any notable issues."
 
         return base_prompt
 
     def _create_diagram_prompt(self, caption: Optional[str], file_path: Path) -> str:
         """Create prompt for diagram analysis"""
-        base_prompt = f"""I'm sharing a diagram with you. The image is saved at: {file_path}
+        base_prompt = f"""Diagram shared at: {file_path}
 
-IMPORTANT: Use the Read tool to view the image file before analyzing.
-
-Please help me:
-1. Understand the components and their relationships
-2. Identify the type of diagram (flowchart, architecture, etc.)
-3. Explain any technical concepts shown
-4. Suggest improvements or clarifications
+Read the image file, then respond directly with your analysis.
+Do NOT explore other files - just analyze what you see in the image.
+Keep your response concise and focused.
 
 """
         if caption:
-            base_prompt += f"Specific request: {caption}"
+            base_prompt += f"User's question: {caption}"
+        else:
+            base_prompt += "Explain the diagram's components and relationships."
 
         return base_prompt
 
     def _create_ui_prompt(self, caption: Optional[str], file_path: Path) -> str:
         """Create prompt for UI mockup analysis"""
-        base_prompt = f"""I'm sharing a UI mockup with you. The image is saved at: {file_path}
+        base_prompt = f"""UI mockup shared at: {file_path}
 
-IMPORTANT: Use the Read tool to view the image file before analyzing.
-
-Please analyze:
-1. The layout and visual hierarchy
-2. User experience considerations
-3. Accessibility aspects
-4. Implementation suggestions
-5. Any potential improvements
+Read the image file, then respond directly with your analysis.
+Do NOT explore other files - just analyze what you see in the image.
+Keep your response concise and focused.
 
 """
         if caption:
-            base_prompt += f"Specific request: {caption}"
+            base_prompt += f"User's question: {caption}"
+        else:
+            base_prompt += "Analyze the UI layout and suggest improvements."
 
         return base_prompt
 
     def _create_generic_prompt(self, caption: Optional[str], file_path: Path) -> str:
         """Create generic image analysis prompt"""
-        base_prompt = f"""I'm sharing an image with you. The image is saved at: {file_path}
+        base_prompt = f"""Image shared at: {file_path}
 
-IMPORTANT: Use the Read tool to view the image file before analyzing.
-
-Please analyze it and provide relevant insights.
+Read the image file, then respond directly with your analysis.
+Do NOT explore other files - just analyze what you see in the image.
+Keep your response concise and focused.
 
 """
         if caption:
-            base_prompt += f"Context: {caption}"
+            base_prompt += f"User's request: {caption}"
+        else:
+            base_prompt += "Describe what you see in the image."
 
         return base_prompt
 
